@@ -1,0 +1,16 @@
+config:
+  limits.cpu: '1'
+  limits.memory: 256MB
+  cloud-init.user-data: |
+    #cloud-config
+    packages:
+      - unzip
+      # there is no awscli package for ubuntu:noble
+      # for install via pip the package python3-pip has many dependencies and it is version 1 - https://pypi.org/project/awscli/
+    runcmd:
+      - |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -i).zip" -o "/root/awscliv2.zip"
+        # available for x86_64 or aarch64
+        unzip /root/awscliv2.zip -d /root/
+        rm /root/awscliv2.zip
+        /root/aws/install
