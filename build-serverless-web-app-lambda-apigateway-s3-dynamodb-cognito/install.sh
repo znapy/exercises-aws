@@ -1,7 +1,7 @@
 #!/bin/env bash
 
 if [ -z "$2" ]; then
-    >&2 echo "Error: AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY environment variables is not set"
+    >&2 echo "Error: AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY parameters is not set"
     exit 1
 fi
 
@@ -50,3 +50,6 @@ EOF
 lxc exec $PROJECTNAME -- cloud-init status --wait
 lxc file push -r $WORK_DIR/.aws $PROJECTNAME/root/
 lxc exec $PROJECTNAME -- aws --version
+
+lxc file push $PROJECTPATH/module1.py $PROJECTNAME/root/
+#lxc exec $PROJECTNAME -- python3.12 /root/module1.py

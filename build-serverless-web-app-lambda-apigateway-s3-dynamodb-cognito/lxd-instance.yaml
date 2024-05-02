@@ -7,6 +7,7 @@ config:
       - unzip
       # there is no awscli package for ubuntu:noble
       # for install via pip the package python3-pip has many dependencies and it is version 1 - https://pypi.org/project/awscli/
+      # already istalled: git
     runcmd:
       - |
         curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -i).zip" -o "/root/awscliv2.zip"
