@@ -9,10 +9,12 @@ https://aws.amazon.com/getting-started/hands-on/build-serverless-web-app-lambda-
 import json
 import subprocess
 from pathlib import Path
+from time import sleep
 
-PROJECTNAME = "aws-serverless-web-app"
+PROJECTNAME = "aws-serverless-web-app"  # TODO: take PROJECTNAME from install.sh
 REPO_NAME = "wildrydes-site"
 IAM_USER = "exercise"
+ACTIVE_TIME = 50*60  # 50 minutes in seconds - time before delete instances
 
 ###########
 # Helpers #
@@ -21,10 +23,10 @@ def run(command:str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     """Run a command and return the result."""
     return subprocess.run(command, capture_output=True, cwd=cwd)
 
-def conf_get(variable: str) -> str:
+def conf_get(variable: str, profile = PROJECTNAME) -> str:
     """Get a value from the aws config file for IAM user."""
     result = run(["aws", "configure", "get", variable,
-                  "--profile", PROJECTNAME])
+                  "--profile", profile])
     return result.stdout.decode().rstrip()
 
 def conf_set(variable: str, value: str) -> None:
@@ -39,6 +41,25 @@ def attach_policy(arn: str) -> None:
     if result.returncode != 0:
         raise ValueError("Error attaching the user policy: {result}")
     print(f"User {IAM_USER} has been attached the policy {arn}")
+
+def attach_role_policy(role:str, arn: str) -> None:
+    """Attach a policy to the role."""
+    result = run(["aws", "iam", "attach-role-policy", 
+                  "--role-name", role, "--policy-arn", arn])
+    if result.returncode != 0:
+        raise ValueError("Error attaching the role policy: {result}")
+    print(f"Role {role} has been attached the policy {arn}")
+
+def get_ampify_appId() -> str:
+    """Get the Ampify app ID."""
+    result = run(["aws", "amplify", "list-apps",
+                  "--query", "apps[?name=='wildrydes-site'].appId"])
+    if result.returncode != 0:
+        raise ValueError("Error getting the list of amplify apps: {result}")
+    values = json.loads(result.stdout.decode())
+    if values:
+        return values[0]
+    return ""
 
 ################
 # Script steps #
@@ -118,6 +139,7 @@ def create_access_key():
 
     conf_set("aws_access_key_id", access_key['AccessKeyId'])
     conf_set("aws_secret_access_key", access_key['SecretAccessKey'])
+    conf_set("region", conf_get("region", "default"))
     
     print(f"Access key for profile {PROJECTNAME} has been created")
 
@@ -182,7 +204,7 @@ def configure_git() -> None:
         raise ValueError("Error setting the UseHttpPath: {result}")
     print("Git has been configured")
 
-def git_clone(url: str) -> None:
+def clone_git(url: str) -> None:
     """Clone the repository."""
     # FIXME: Figure out why it works without user and password for https
     # https_service_username = conf_get("https-service-username")
@@ -233,28 +255,103 @@ def copy_website_content() -> None:
     run(["tar", "-xf", "wildrydes-site.tar.gz"])
     print("Website content has been copied to the directory")
 
-def push_to_git() -> None:
-    """Push all fales to repository."""
+def push_to_git(message: str) -> None:
+    """Push all files to repository."""
     repo_path = Path(REPO_NAME)
     # I don't want to install the git module in python
-    result = run(["git", "status"], repo_path)
+    result = run(["git", "status", "--porcelain"], repo_path)
     if result.returncode != 0:
         raise ValueError("Error getting the git status: {result}")
-    if "nothing to commit, working tree clean" in result.stdout.decode():
-        print("Nothing to commit and push")
+    if not result.stdout.decode():
+        print(f"Nothing to commit and push with message '{message}'")
         return
 
     run(["git", "add", "."], repo_path)
-    run(["git", "commit", "-m", '"new files"'], repo_path)
+    run(["git", "commit", "-m", f'"{message}"'], repo_path)
     run(["git", "push"], repo_path)
-    print("Website content have been pushed to the repository")
+    print("Website content have been pushed to the repository with message"
+          f" '{message}'")
+
+def _create_amplify_role() -> str:
+    """Create amplify role."""
+    amplify_role_name = "amplifyconsole-backend-role"
+    result = run(["aws", "iam", "get-role", "--role-name", amplify_role_name])
+    if result.returncode == 254 \
+            and "NoSuchEntity" in result.stderr.decode():
+        
+        result = run(["aws", "iam", "create-role", "--role-name",
+                      amplify_role_name, "--assume-role-policy-document",
+                      '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+                      '"Principal":{"Service":"amplify.amazonaws.com"},'
+                      '"Action":"sts:AssumeRole"}]}'])
+        if result.returncode != 0:
+            raise ValueError("Error creating the role: {result}")
+        print(f"Role {amplify_role_name} has been created")
+
+    else:
+        print(f"Role {amplify_role_name} was created earlier")
+
+    arn_role = json.loads(result.stdout.decode())["Role"]["Arn"]
+    arn_policy = "arn:aws:iam::aws:policy/AdministratorAccess-Amplify"
+    # no error if policy already attached
+    attach_role_policy(amplify_role_name, arn_policy)
+
+    return arn_role
+
+def create_amplify(repo_url: str) -> None:
+    """Create amplify app with data from repo."""
+    if get_ampify_appId():
+        print(f"Amplify app {REPO_NAME} was created earlier")
+        return
+    
+    iam_service_role_arn = _create_amplify_role()
+    result = run(["aws", "amplify", "create-app", "--name", REPO_NAME,
+                  "--repository", repo_url, "--platform", "WEB",
+                  "--iam-service-role-arn", iam_service_role_arn])
+    if result.returncode != 0:
+        raise ValueError("Error creating the amplify app: {result}")
+    app = json.loads(result.stdout.decode())["app"]
+
+    result = run(["aws", "amplify", "create-branch", "--app-id", app.appId,
+                  "--branch-name", "master", "--stage", "PRODUCTION"])
+    if result.returncode != 0:
+        raise ValueError("Error creating the branch in amplify app: {result}")
+    print(f"Amplify app {REPO_NAME} has been created with address"
+          f" https://master.{app.defaultDomain}/")
+
+def modify_file() -> None:
+    """Modify the index.html file."""
+    file_path = Path(REPO_NAME) / "index.html"
+    with open(file_path, "r") as file:
+        content = file.read()
+    
+    title_new = "<title>Wild Rydes - Rydes of the Future!</title>"
+    if title_new in content:
+        print("Title of the index.html file was modified earlier")
+        return
+    
+    title_original = "<title>Wild Rydes</title>"
+    if title_original not in content:
+        raise ValueError("Title of the index.html file was not found")
+    content = content.replace(title_original, title_new)
+
+    with open(file_path, "w") as file:
+        file.write(content)
+    print("Title of the index.html file has been modified")
 
 def clean() -> None:
     """Clean up in aws cloud what we have created in this module"""
     # TODO: delete repo "wildrydes-site"
     # TODO: delete access key from user <IAM_USER>
     # TODO: delete HTTPS git credentials from user <IAM_USER>
-    pass
+    # TODO: delete amplify_role_name = "amplifyconsole-backend-role"
+    
+    app_id = get_ampify_appId()
+    if app_id:
+        result = run(["aws", "amplify", "delete-app", "--app-id", app_id])
+        if result.returncode != 0:
+            raise ValueError("Error deleting the amplify app: {result}")
+        print(f"Amplify app {REPO_NAME} has been deleted")
 
 
 if __name__ == "__main__":
@@ -264,6 +361,12 @@ if __name__ == "__main__":
     create_access_key()
     create_HTTPS_git_credentials()
     configure_git()
-    git_clone(url)
+    clone_git(url)
     copy_website_content()
-    push_to_git()
+    push_to_git("new files")
+    create_amplify(url)
+    modify_file()
+    push_to_git("updated title")
+
+    sleep(ACTIVE_TIME)  # TODO: maybe wait for any key to be pressed?
+    clean()

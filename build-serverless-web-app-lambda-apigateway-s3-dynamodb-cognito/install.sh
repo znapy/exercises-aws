@@ -52,4 +52,5 @@ lxc file push -r $WORK_DIR/.aws $PROJECTNAME/root/
 lxc exec $PROJECTNAME -- aws --version
 
 lxc file push $PROJECTPATH/module1.py $PROJECTNAME/root/
-#lxc exec $PROJECTNAME -- python3.12 /root/module1.py
+lxc file push $PROJECTPATH/wildrydes-site.tar.gz $PROJECTNAME/root/
+lxc exec $PROJECTNAME -- python3.12 /root/module1.py
