@@ -12,6 +12,7 @@ from pathlib import Path
 config = ConfigParser()
 config.read("/root/.aws/config")
 
+BASE_DIR = Path(__file__).resolve().parent
 PROJECTNAME = config.sections()[1].replace("profile ", "")
 IAM_USER = config[f"profile {PROJECTNAME}"]["IAM_USER"]
 IAM_USER_MAIL = config[f"profile {PROJECTNAME}"]["IAM_USER_MAIL"]
@@ -25,9 +26,12 @@ REPO_NAME = "wildrydes-site"
 ACTIVE_TIME = 50*60  # 50 minutes in seconds - time before delete instances
 
 
-def run(command: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+def run(command: list[str], cwd=BASE_DIR) -> subprocess.CompletedProcess:
     """Run a command and return the result."""
     return subprocess.run(command, capture_output=True, cwd=cwd, check=False)
+    # As aws-cli is better way to use boto3 module in python:
+    # https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
+    # but instead I will use aws-cli via subprocess
 
 
 def conf_get(variable: str, profile=PROJECTNAME) -> str:
@@ -74,7 +78,7 @@ def attach_role_policy(role: str, arn: str) -> None:
 
 def push_to_git(message: str) -> None:
     """Push all files to repository."""
-    repo_path = Path(REPO_NAME)
+    repo_path = BASE_DIR / REPO_NAME
     # I don't want to install the git module in python
     result = run(["git", "status", "--porcelain"], repo_path)
     if result.returncode != 0:
