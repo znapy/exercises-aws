@@ -67,6 +67,28 @@ def attach_policy(arn: str) -> None:
     print(f"User {IAM_USER} has been attached the policy {arn}")
 
 
+def create_role(role_name: str, policy_document: str, arn_policy: str) -> str:
+    """Create role."""
+    result = run(["aws", "iam", "get-role", "--role-name", role_name])
+    if result.returncode == 254 \
+            and "NoSuchEntity" in result.stderr.decode():
+
+        result = run(["aws", "iam", "create-role", "--role-name", role_name,
+                      "--assume-role-policy-document", policy_document])
+        if result.returncode != 0:
+            raise ValueError(f"Error creating the role: {result}")
+        print(f"Role {role_name} has been created")
+
+    else:
+        print(f"Role {role_name} was created earlier")
+
+    arn_role = json.loads(result.stdout.decode())["Role"]["Arn"]
+    # no error if policy already attached
+    attach_role_policy(role_name, arn_policy)
+
+    return arn_role
+
+
 def attach_role_policy(role: str, arn: str) -> None:
     """Attach a policy to the role."""
     result = run(["aws", "iam", "attach-role-policy",

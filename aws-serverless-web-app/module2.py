@@ -21,7 +21,6 @@ import string
 from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER_MAIL, REGION, \
                     ACCOUNT_ID, run, arns_user_policies, attach_policy, \
                     push_to_git
-import module1
 
 
 def add_policies() -> None:
@@ -72,24 +71,6 @@ def _user_pool_policy_document(email_arn: str) -> str:
             }
         ]}, separators=(', ', ':'))
 
-
-# def _create_policy(name: str, document: str) -> str:
-#     """Create policy."""
-#     result = run(["aws", "iam", "list-policies", "--max-items", "1",
-#         "--query", f"Policies[?PolicyName=='{name}'].Arn",
-#         "--profile", PROJECTNAME])
-#     if result.returncode == 0 and result.stdout.decode().strip() != "[]":
-#         print(f"Policy {name} already exists")
-#         return  json.loads(result.stdout.decode())[0]
-
-#     result = run(["aws", "iam", "create-policy",
-#                   "--policy-name", name,
-#                   "--policy-document", document,
-#                   "--profile", PROJECTNAME])
-#     if result.returncode != 0:
-#         raise ValueError(f"Error creating policy: {result}")
-#     print(f"Policy {name} has been created")
-#     return json.loads(result.stdout.decode())["Policy"]["Arn"]
 
 def _put_identity_policy(identity: str, policy_name: str, document: str
                          ) -> None:
@@ -489,8 +470,6 @@ def clean() -> None:
 
 def main() -> None:
     """Main function."""
-    module1.main()
-
     add_policies()
     create_email_identity()
     user_pool_id = create_user_pool()
@@ -499,11 +478,6 @@ def main() -> None:
     push_to_git("new_config")
     login, password = register_new_user(user_pool_id)
     token = authenticate_user(user_pool_id, client_id, login, password)
-
-    input("press Enter to delete apps (amplify)"
-          " or Ctrl+C to leave them running...")
-    clean()
-    module1.clean()
 
 
 if __name__ == "__main__":

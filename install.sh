@@ -87,4 +87,4 @@ lxc file push -r $WORK_DIR/.aws $PROJECTNAME/root/
 lxc exec $PROJECTNAME -- aws --version
 
 lxc file push --recursive $PROJECTPATH $PROJECTNAME/root/
-lxc exec $PROJECTNAME -- python3.12 /root/$PROJECTNAME/module2.py
+# lxc exec $PROJECTNAME -- python3.12 /root/$PROJECTNAME/module2.py

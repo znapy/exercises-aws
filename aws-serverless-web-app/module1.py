@@ -10,8 +10,8 @@ https://aws.amazon.com/getting-started/hands-on/build-serverless-web-app-lambda-
 import json
 
 from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER, REGION, \
-                    run, conf_get, conf_set, attach_policy, \
-                    attach_role_policy, arns_user_policies, push_to_git
+                    run, conf_get, conf_set, create_role, attach_policy, \
+                    arns_user_policies, push_to_git
 
 
 ################
@@ -216,33 +216,6 @@ def copy_website_content() -> None:
     print("Website content has been copied to the directory")
 
 
-def _create_amplify_role() -> str:
-    """Create amplify role."""
-    amplify_role_name = "amplifyconsole-backend-role"
-    result = run(["aws", "iam", "get-role", "--role-name", amplify_role_name])
-    if result.returncode == 254 \
-            and "NoSuchEntity" in result.stderr.decode():
-
-        result = run(["aws", "iam", "create-role", "--role-name",
-                      amplify_role_name, "--assume-role-policy-document",
-                      '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
-                      '"Principal":{"Service":"amplify.amazonaws.com"},'
-                      '"Action":"sts:AssumeRole"}]}'])
-        if result.returncode != 0:
-            raise ValueError(f"Error creating the role: {result}")
-        print(f"Role {amplify_role_name} has been created")
-
-    else:
-        print(f"Role {amplify_role_name} was created earlier")
-
-    arn_role = json.loads(result.stdout.decode())["Role"]["Arn"]
-    arn_policy = "arn:aws:iam::aws:policy/AdministratorAccess-Amplify"
-    # no error if policy already attached
-    attach_role_policy(amplify_role_name, arn_policy)
-
-    return arn_role
-
-
 def _get_ampify_app_id() -> str:
     """Get the Ampify app ID."""
     result = run(["aws", "amplify", "list-apps",
@@ -261,7 +234,12 @@ def create_amplify(repo_url: str) -> None:
         print(f"Amplify app {REPO_NAME} was created earlier")
         return
 
-    iam_service_role_arn = _create_amplify_role()
+    iam_service_role_arn = create_role(
+        "amplifyconsole-backend-role",
+        '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+        '"Principal":{"Service":"amplify.amazonaws.com"},'
+        '"Action":"sts:AssumeRole"}]}',
+        "arn:aws:iam::aws:policy/AdministratorAccess-Amplify")
     result = run(["aws", "amplify", "create-app", "--name", REPO_NAME,
                   "--repository", repo_url, "--platform", "WEB",
                   "--iam-service-role-arn", iam_service_role_arn,

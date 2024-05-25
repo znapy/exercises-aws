@@ -1,3 +1,9 @@
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+build/
+*.egg-info/
+.ropeproject/
 .env
 *.log
 *.log.*

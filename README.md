@@ -8,9 +8,7 @@ Cost: Free if you have active of the Free Tier.
 
 This exercise is located in the directory *\<project directory\>/aws-serverless-web-app*
 
-To start container: `bash install.sh $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY` with administrator keys.
-
-The script also uses environment variables from the *\<project directory\>/**.env*** file.
+The script `install.sh` uses environment variables from the *\<project directory\>/**.env*** file.
 
 List of evironments (fill the empty values):
 
@@ -26,8 +24,10 @@ where:
 - **IAM_USER_MAIL** used for [email identity and verify procedure](https://docs.aws.amazon.com/ses/latest/dg/creating-identities.html#verify-email-addresses-procedure) - fill a real email address.
 - **REGION** used as AWS Region - fill your nearest region, something like "us-east-1" or "eu-central-1".
 
+To start container: `bash install.sh $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY` with administrator keys.
+
 I know about [boto3 module](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) for python,
-but I don't want to install python3-pip for it, so I will use aws-cli and some code from pycognito.
+but I don't want to install python3-pip for it, so I will use aws-cli and some code from pycognito for this module.
 
 ### Additional sources copied to this repository
 
