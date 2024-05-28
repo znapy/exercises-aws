@@ -10,11 +10,8 @@ https://aws.amazon.com/getting-started/hands-on/build-serverless-web-app-lambda-
 import time
 import json
 
-from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER_MAIL, REGION, \
-                    ACCOUNT_ID, run, arns_user_policies, attach_policy, \
-                    create_role
-# import module1
-# import module2
+from helpers import BASE_DIR, PROJECTNAME, REGION, ACCOUNT_ID, \
+    run, arns_user_policies, attach_policy, create_role, State
 
 
 def add_policies() -> None:
@@ -156,12 +153,12 @@ def create_test_event(lambda_name: str) -> None:
     if not response_file.is_file():
         raise ValueError(f"Error creating file {response_file}")
 
-    with open(response_file, "r") as file:
+    with open(response_file, "r", encoding="utf-8") as file:
         data = json.load(file)
     if data["statusCode"] != 201:
         raise ValueError(f"Error in: {response_file}")
     response_file.unlink()
-    print(f"Test event has been checked:", data["body"])
+    print("Test event has been checked:", data["body"])
 
 
 def clean(table_name: str, lambda_name: str) -> None:
@@ -180,14 +177,11 @@ def clean(table_name: str, lambda_name: str) -> None:
     # Delete role
 
 
-
-def main() -> None:
+def main(state: State) -> None:
     """Main function."""
-    # module1.main()
-    # module2.main()
     dynamodb_table_name = "Rides"
     role_name = "WildRydesLambda"
-    lambda_name = "RequestUnicorn"
+    state.lambda_name = "RequestUnicorn"
     add_policies()
     stream_arn = create_dynamodb_table(dynamodb_table_name)
     table_arn = stream_arn.split("/stream/")[0]
@@ -202,15 +196,9 @@ def main() -> None:
         "DynamoDBWriteAccess",
         '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":'
         f'["dynamodb:PutItem"],"Resource":"{table_arn}"' + '}]}')
-    function_arn = create_lambda_function(iam_service_role_arn, lambda_name)
-    create_test_event(lambda_name)
-
-    input("press Enter to delete apps (lambda, dynamoDB)"
-          " or Ctrl+C to leave them running...")
-    clean(dynamodb_table_name, lambda_name)
-    #module2.clean()
-    #module1.clean()
+    create_lambda_function(iam_service_role_arn, state.lambda_name)
+    create_test_event(state.lambda_name)
 
 
 if __name__ == "__main__":
-    main()
+    main(State())

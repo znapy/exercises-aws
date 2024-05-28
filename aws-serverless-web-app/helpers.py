@@ -114,3 +114,11 @@ def push_to_git(message: str) -> None:
     run(["git", "push"], repo_path)
     print("Website content have been pushed to the repository with message"
           f" '{message}'")
+
+
+class State:
+    """Class for keeping state between modules."""
+    user_pool_id: str
+    auth_token: str
+    lambda_name: str
+    site_url: str

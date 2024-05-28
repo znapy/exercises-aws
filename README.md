@@ -29,7 +29,10 @@ To start container: `bash install.sh $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY` 
 I know about [boto3 module](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) for python,
 but I don't want to install python3-pip for it, so I will use aws-cli and some code from pycognito for this module.
 
+The automated module instructions are in the files *moduleX.py*.
+
 ### Additional sources copied to this repository
 
 - *wildrydes-site.tar.gz* from [s3://ttt-wildrydes/wildrydes-site](s3://ttt-wildrydes/wildrydes-site)
 - some functions from [pycognito-2024.2.0/pycognito/aws_srp.py](https://pypi.org/project/pycognito/#files)
+- *TestRequestEvent.js* and *lambda.zip* - javascripts from AWS module 3 exercise

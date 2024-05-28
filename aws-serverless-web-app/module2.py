@@ -20,7 +20,7 @@ import string
 
 from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER_MAIL, REGION, \
                     ACCOUNT_ID, run, arns_user_policies, attach_policy, \
-                    push_to_git
+                    push_to_git, State
 
 
 def add_policies() -> None:
@@ -105,14 +105,19 @@ def create_user_pool() -> str:
                          _user_pool_policy_document(email_arn))
     result = run(["aws", "cognito-idp", "create-user-pool",
                   "--pool-name", pool_name,
-                  "--alias-attributes", "preferred_username",
+                  # there is username in exercise ("preferred_username"),
+                  # but site login form is with email ("email"), both variants
+                  # don't work from XXX.amplifyapp.com/signin.html - so use
+                  # already logined session via regestation.
+                  "--alias-attributes", "email",
                   "--mfa-configuration", "OFF",
                   f"--email-configuration=SourceArn='{email_arn}'",
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating user pool: {result}")
-    print("User pool has been created")
-    return json.loads(result.stdout.decode())["UserPool"]["Id"]
+    user_pool_id = json.loads(result.stdout.decode())["UserPool"]["Id"]
+    print(f"User pool {user_pool_id} has been created")
+    return user_pool_id
 
 
 def create_user_pool_client(user_pool_id: str) -> str:
@@ -135,8 +140,9 @@ def create_user_pool_client(user_pool_id: str) -> str:
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating user pool client: {result}")
-    print("User pool client has been created")
-    return json.loads(result.stdout.decode())["UserPoolClient"]["ClientId"]
+    client_id = json.loads(result.stdout.decode())["UserPoolClient"]["ClientId"]
+    print(f"User pool client {client_id} has been created")
+    return client_id
 
 
 def modify_file(user_pool_id: str, client_id: str) -> None:
@@ -429,8 +435,6 @@ class AWSSRP:
 def authenticate_user(user_pool_id: str, client_id: str,
                       login: str, password: str) -> str:
     """Authenticate user in AWS cognito."""
-    # AWSSRP(username=login, password=password, pool_id=user_pool_id,
-    #        client_id=client_id, pool_region=REGION)
     aws_srp = AWSSRP(user_pool_id)
     srp_a = AWSSRP.long_to_hex(aws_srp.large_a_value)
     result = run([
@@ -456,7 +460,7 @@ def authenticate_user(user_pool_id: str, client_id: str,
     if result.returncode != 0:
         raise ValueError(f"Error PASSWORD_VERIFIER: {result}")
     authentication = json.loads(result.stdout.decode())["AuthenticationResult"]
-    print(authentication)
+    print("User authentificated with token", authentication["IdToken"])
     return authentication["IdToken"]
 
 
@@ -468,17 +472,18 @@ def clean() -> None:
     # Delete user pool (with user pool clients)
 
 
-def main() -> None:
+def main(state: State) -> None:
     """Main function."""
     add_policies()
     create_email_identity()
-    user_pool_id = create_user_pool()
-    client_id = create_user_pool_client(user_pool_id)
-    modify_file(user_pool_id, client_id)
+    state.user_pool_id = create_user_pool()
+    client_id = create_user_pool_client(state.user_pool_id)
+    modify_file(state.user_pool_id, client_id)
     push_to_git("new_config")
-    login, password = register_new_user(user_pool_id)
-    token = authenticate_user(user_pool_id, client_id, login, password)
+    login, password = register_new_user(state.user_pool_id)
+    state.auth_token = authenticate_user(
+        state.user_pool_id, client_id, login, password)
 
 
 if __name__ == "__main__":
-    main()
+    main(State())

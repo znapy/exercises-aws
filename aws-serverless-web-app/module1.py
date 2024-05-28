@@ -11,7 +11,7 @@ import json
 
 from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER, REGION, \
                     run, conf_get, conf_set, create_role, attach_policy, \
-                    arns_user_policies, push_to_git
+                    arns_user_policies, push_to_git, State
 
 
 ################
@@ -228,11 +228,12 @@ def _get_ampify_app_id() -> str:
     return ""
 
 
-def create_amplify(repo_url: str) -> None:
+def create_amplify(repo_url: str) -> str:
     """Create amplify app with data from repo."""
-    if _get_ampify_app_id():
+    appId = _get_ampify_app_id()
+    if appId:
         print(f"Amplify app {REPO_NAME} was created earlier")
-        return
+        return f"https://master.{appId}.amplifyapp.com/"
 
     iam_service_role_arn = create_role(
         "amplifyconsole-backend-role",
@@ -248,6 +249,9 @@ def create_amplify(repo_url: str) -> None:
         raise ValueError(f"Error creating the amplify app: {result}")
     app = json.loads(result.stdout.decode())["app"]
 
+    # There is problem with repo if you recreate it with the same name
+    # - new Amplify app will get commits from cached old repo,
+    # I don't want to figure out this problem, I'll just leave it as it is.
     result = run(["aws", "amplify", "create-branch", "--app-id", app["appId"],
                   "--branch-name", "master", "--stage", "PRODUCTION",
                   "--profile", PROJECTNAME])
@@ -256,8 +260,10 @@ def create_amplify(repo_url: str) -> None:
     result = run(["aws", "amplify", "start-job", "--app-id", app["appId"],
                   "--branch-name", "master", "--job-type", "RELEASE",
                   "--profile", PROJECTNAME])
+    site_url = f"https://master.{app['defaultDomain']}/"
     print(f"Amplify app {REPO_NAME} has been created with address"
-          f" https://master.{app['defaultDomain']}/ (wait during deployment)")
+          f"'{site_url}' (wait during deployment)")
+    return site_url
 
 
 def modify_file() -> None:
@@ -298,7 +304,7 @@ def clean() -> None:
         print(f"Amplify app {REPO_NAME} has been deleted")
 
 
-def main() -> None:
+def main(state: State) -> None:
     """Main function."""
     url = create_repo()
     create_iam_user()
@@ -309,10 +315,10 @@ def main() -> None:
     clone_git(url)
     copy_website_content()
     push_to_git("new files")
-    create_amplify(url)
+    state.site_url = create_amplify(url)
     modify_file()
     push_to_git("updated title")
 
 
 if __name__ == "__main__":
-    main()
+    main(State())
