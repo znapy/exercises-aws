@@ -23,7 +23,11 @@ ACCOUNT_ID = subprocess.run(
         .stdout.decode().rstrip()
 
 REPO_NAME = "wildrydes-site"
-ACTIVE_TIME = 50*60  # 50 minutes in seconds - time before delete instances
+LAMBDA_NAME = "RequestUnicorn"
+LAMBDA_ROLE_NAME = "WildRydesLambda"
+DYNAMODB_NAME = "Rides"
+AMPLIFY_ROLE = "amplifyconsole-backend-role"
+GATEWAY_API_NAME = "WildRydes"
 
 
 def run(command: list[str], cwd=BASE_DIR) -> subprocess.CompletedProcess:
@@ -89,6 +93,35 @@ def create_role(role_name: str, policy_document: str, arn_policy: str) -> str:
     return arn_role
 
 
+def delete_role(role_name: str) -> None:
+    """Delete role."""
+    result = run(["aws", "iam", "list-attached-role-policies",
+                  "--role-name", role_name])
+    if result.returncode == 0:
+        policies = json.loads(result.stdout.decode())["AttachedPolicies"]
+        for policy in policies:
+            result = run(["aws", "iam", "detach-role-policy",
+                          "--role-name", role_name,
+                          "--policy-arn", policy["PolicyArn"]])
+            if result.returncode != 0:
+                raise ValueError(f"Error detaching the role policy: {result}")
+
+    result = run(["aws", "iam", "list-role-policies", "--role-name",
+                  role_name])
+    if result.returncode == 0:
+        policies = json.loads(result.stdout.decode())["PolicyNames"]
+        for policy in policies:
+            result = run(["aws", "iam", "delete-role-policy",
+                          "--role-name", role_name, "--policy-name", policy])
+            if result.returncode != 0:
+                raise ValueError(f"Error deleting the role policy: {result}")
+
+    result = run(["aws", "iam", "delete-role", "--role-name", role_name])
+    if result.returncode != 0:
+        raise ValueError(f"Error deleting the role: {result}")
+    print(f"Role {role_name} has been deleted")
+
+
 def attach_role_policy(role: str, arn: str) -> None:
     """Attach a policy to the role."""
     result = run(["aws", "iam", "attach-role-policy",
@@ -122,3 +155,4 @@ class State:
     auth_token: str
     lambda_name: str
     site_url: str
+    api_id: str

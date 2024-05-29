@@ -10,8 +10,9 @@ https://aws.amazon.com/getting-started/hands-on/build-serverless-web-app-lambda-
 import time
 import json
 
-from helpers import BASE_DIR, PROJECTNAME, REGION, ACCOUNT_ID, \
-    run, arns_user_policies, attach_policy, create_role, State
+from helpers import BASE_DIR, PROJECTNAME, REGION, ACCOUNT_ID, DYNAMODB_NAME, \
+    LAMBDA_NAME, LAMBDA_ROLE_NAME, run, arns_user_policies, attach_policy, \
+    create_role, delete_role, State
 
 
 def add_policies() -> None:
@@ -33,22 +34,22 @@ def _get_dynamodb_stream_arn(table_name: str) -> str:
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error describe table: {result}")
-    return result.stdout.decode().strip()
+    return result.stdout.decode().strip().replace('"', '')
 
 
-def create_dynamodb_table(table_name: str) -> str:
+def create_dynamodb_table() -> str:
     """Create 'Rides' - a DynamoDB table."""
     result = run(["aws", "dynamodb", "list-tables",
-                  "--query", f"TableNames[?contains(@, '{table_name}')]",
+                  "--query", f"TableNames[?contains(@, '{DYNAMODB_NAME}')]",
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error listing tables: {result}")
-    if result.stdout.decode().strip() != "[]":
-        print(f"Table '{table_name}' already exists")
-        return _get_dynamodb_stream_arn(table_name)
+    if result.stdout.decode().strip().replace('"', '') != "[]":
+        print(f"Table '{DYNAMODB_NAME}' already exists")
+        return _get_dynamodb_stream_arn(DYNAMODB_NAME)
 
     result = run([
-        "aws", "dynamodb", "create-table", "--table-name", table_name,
+        "aws", "dynamodb", "create-table", "--table-name", DYNAMODB_NAME,
         "--attribute-definitions", "AttributeName=RideId,AttributeType=S",
         "--key-schema", "AttributeName=RideId,KeyType=HASH",
         "--provisioned-throughput", "ReadCapacityUnits=1,WriteCapacityUnits=1",
@@ -61,38 +62,19 @@ def create_dynamodb_table(table_name: str) -> str:
     while True:  # wait until table is created
         time.sleep(5)
         result = run(["aws", "dynamodb", "describe-table",
-                      "--table-name", table_name,
+                      "--table-name", DYNAMODB_NAME,
                       "--query", "Table.TableStatus",
                       "--profile", PROJECTNAME])
         if result.returncode != 0:
             raise ValueError(f"Error check table status: {result}")
-        status = result.stdout.decode().strip()
+        status = result.stdout.decode().strip().replace('"', "")
         if status != "CREATING":
             break
     if status != "ACTIVE":
-        raise ValueError(f"Error creating table, status: {status}")
+        raise ValueError(f"Error creating table, status: '{status}'")
 
-    print(f"Table '{table_name}' has been created")
-    return _get_dynamodb_stream_arn(table_name)
-
-
-# def create_policy(name: str, document: str) -> str:
-#     """Create policy."""
-#     result = run(["aws", "iam", "list-policies", "--max-items", "1",
-#         "--query", f"Policies[?PolicyName=='{name}'].Arn",
-#         "--profile", PROJECTNAME])
-#     if result.returncode == 0 and result.stdout.decode().strip() != "[]":
-#         print(f"Policy {name} already exists")
-#         return  json.loads(result.stdout.decode())[0]
-
-#     result = run(["aws", "iam", "create-policy",
-#                   "--policy-name", name,
-#                   "--policy-document", document,
-#                   "--profile", PROJECTNAME])
-#     if result.returncode != 0:
-#         raise ValueError(f"Error creating policy: {result}")
-#     print(f"Policy {name} has been created")
-#     return json.loads(result.stdout.decode())["Policy"]["Arn"]
+    print(f"Table '{DYNAMODB_NAME}' has been created")
+    return _get_dynamodb_stream_arn(DYNAMODB_NAME)
 
 
 def create_inlile_policy_in_role(role_name: str, policy_name: str,
@@ -101,7 +83,8 @@ def create_inlile_policy_in_role(role_name: str, policy_name: str,
     result = run(["aws", "iam", "list-role-policies", "--role-name", role_name,
                   "--query", f"PolicyNames[?contains(@, '{policy_name}')]",
                   "--profile", PROJECTNAME])
-    if result.returncode == 0 and result.stdout.decode().strip() != "[]":
+    if result.returncode == 0 and \
+            result.stdout.decode().strip().replace('"', '') != "[]":
         print(f"Inline policy {policy_name} already exists")
         return
 
@@ -114,21 +97,23 @@ def create_inlile_policy_in_role(role_name: str, policy_name: str,
         raise ValueError(f"Error creating inline policy: {result}")
     print(f"Inline policy {policy_name} has been created",
           result.stdout.decode())
+    # wait 5 seconds for the policy to be applied
+    time.sleep(5)
     return
 
 
-def create_lambda_function(role_arn: str, function_name: str) -> str:
+def create_lambda_function(role_arn: str) -> str:
     """Create lambda function."""
     result = run(["aws", "lambda", "list-functions",
-                  "--query", f"Functions[?FunctionName=='{function_name}']."
+                  "--query", f"Functions[?FunctionName=='{LAMBDA_NAME}']."
                   "FunctionName",
                   "--profile", PROJECTNAME])
     if result.returncode == 0 and result.stdout.decode().strip() != "[]":
-        print(f"Lambda function {function_name} already exists")
-        return f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:{function_name}"
+        print(f"Lambda function {LAMBDA_NAME} already exists")
+        return f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:{LAMBDA_NAME}"
 
     result = run(["aws", "lambda", "create-function",
-                  "--function-name", function_name,
+                  "--function-name", LAMBDA_NAME,
                   "--runtime", "nodejs16.x",
                   "--role", role_arn,
                   "--handler", "requestUnicorn.handler",
@@ -136,15 +121,15 @@ def create_lambda_function(role_arn: str, function_name: str) -> str:
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating lambda function: {result}")
-    print(f"Lambda function {function_name} has been created", result)
+    print(f"Lambda function {LAMBDA_NAME} has been created")
     return json.loads(result.stdout.decode())["FunctionArn"]
 
 
-def create_test_event(lambda_name: str) -> None:
+def create_test_event() -> None:
     """Create test event."""
     response_file = BASE_DIR / "response.json"
     result = run(["aws", "lambda", "invoke",
-                  "--function-name", lambda_name,
+                  "--function-name", LAMBDA_NAME,
                   "--cli-binary-format", "raw-in-base64-out",
                   "--payload", "file://./TestRequestEvent.js",
                   "--profile", PROJECTNAME, response_file])
@@ -161,44 +146,44 @@ def create_test_event(lambda_name: str) -> None:
     print("Test event has been checked:", data["body"])
 
 
-def clean(table_name: str, lambda_name: str) -> None:
+def clean(state: State) -> None:  # pylint: disable=unused-argument
     """Clean up in aws cloud what we have created in this module"""
     result = run(["aws", "lambda", "delete-function",
-                  "--function-name", lambda_name, "--profile", PROJECTNAME])
+                  "--function-name", LAMBDA_NAME, "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating event: {result}")
+    print(f"Lambda function {LAMBDA_NAME} has been deleted")
+
+    # need another rights for "--profile", PROJECTNAME - so delete as admin
+    result = run(["aws", "logs", "delete-log-group",
+                  "--log-group-name", f"/aws/lambda/{LAMBDA_NAME}"])
+    if result.returncode != 0:
+        raise ValueError(f"Error creating event: {result}")
+    print(f"Log group for lambda {LAMBDA_NAME} has been deleted")
 
     result = run(["aws", "dynamodb", "delete-table",
-                  "--table-name", table_name, "--profile", PROJECTNAME])
+                  "--table-name", DYNAMODB_NAME, "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating event: {result}")
+    print(f"DynamoDB table {DYNAMODB_NAME} has been deleted")
 
-    # TODO: clean module 3
-    # Delete role
+    delete_role(LAMBDA_ROLE_NAME)
 
 
-def main(state: State) -> None:
+def main(state: State) -> None:  # pylint: disable=unused-argument
     """Main function."""
-    dynamodb_table_name = "Rides"
-    role_name = "WildRydesLambda"
-    state.lambda_name = "RequestUnicorn"
-    add_policies()
-    stream_arn = create_dynamodb_table(dynamodb_table_name)
+    stream_arn = create_dynamodb_table()
     table_arn = stream_arn.split("/stream/")[0]
     iam_service_role_arn = create_role(
-        role_name,
+        LAMBDA_ROLE_NAME,
         '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
         '"Principal":{"Service":"lambda.amazonaws.com"},'
         '"Action":"sts:AssumeRole"}]}',
         "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole")
     create_inlile_policy_in_role(
-        role_name,
+        LAMBDA_ROLE_NAME,
         "DynamoDBWriteAccess",
         '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":'
         f'["dynamodb:PutItem"],"Resource":"{table_arn}"' + '}]}')
-    create_lambda_function(iam_service_role_arn, state.lambda_name)
-    create_test_event(state.lambda_name)
-
-
-if __name__ == "__main__":
-    main(State())
+    create_lambda_function(iam_service_role_arn)
+    create_test_event()

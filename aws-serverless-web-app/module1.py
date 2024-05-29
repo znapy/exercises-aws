@@ -9,9 +9,9 @@ https://aws.amazon.com/getting-started/hands-on/build-serverless-web-app-lambda-
 
 import json
 
-from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER, REGION, \
-                    run, conf_get, conf_set, create_role, attach_policy, \
-                    arns_user_policies, push_to_git, State
+from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, IAM_USER, AMPLIFY_ROLE, \
+    run, conf_get, conf_set, create_role, delete_role, \
+    attach_policy, arns_user_policies, push_to_git, State
 
 
 ################
@@ -37,19 +37,6 @@ def create_repo() -> str:
                       )["repositoryMetadata"]["cloneUrlHttp"]
 
 
-def create_iam_user() -> None:
-    """Create IAM user in AWS."""
-    result = run(["aws", "iam", "get-user", "--user-name", IAM_USER])
-    if result.returncode == 254 \
-            and "NoSuchEntity" in result.stderr.decode():
-        result = run(["aws", "iam", "create-user", "--user-name", IAM_USER])
-        if result.returncode != 0:
-            raise ValueError(f"Error creating the user: {result}")
-        print(f"User {IAM_USER} has been created")
-    else:
-        print(f"User {IAM_USER} was created earlier")
-
-
 def add_policies() -> None:
     """Add module policies to the user."""
     arns = ["arn:aws:iam::aws:policy/AWSCodeCommitPowerUser",
@@ -65,39 +52,6 @@ def add_policies() -> None:
 
     if new_policies:
         print(f"User {IAM_USER} has been attached the policies {new_policies}")
-
-
-def create_access_key():
-    """Create an access key."""
-    if conf_get("aws_access_key_id"):
-        print(f"Access key for profile {PROJECTNAME} was created earlier")
-        return
-
-    result = run(["aws", "iam", "list-access-keys", "--user-name", IAM_USER])
-    if result.returncode != 0:
-        raise ValueError(f"Error listing the access keys: {result}")
-    keys = json.loads(result.stdout.decode())["AccessKeyMetadata"]
-    if len(keys):
-        run(["aws", "iam", "delete-access-key", "--user-name", IAM_USER,
-             "--access-key-id", keys[0]['AccessKeyId']])
-
-    result = run(["aws", "iam", "create-access-key", "--user-name", IAM_USER])
-    if result.returncode != 0:
-        raise ValueError(f"Error creating the access key: {result}")
-    access_key = json.loads(result.stdout.decode())["AccessKey"]
-
-    tags = f"Key={access_key['AccessKeyId']},Value='created by {PROJECTNAME}'"
-    result = run(["aws", "iam", "tag-user",
-                  "--user-name", IAM_USER, "--tags", tags])
-    if result.returncode != 0:
-        raise ValueError("Error adding the description to access key:"
-                         f" {result}")
-
-    conf_set("aws_access_key_id", access_key['AccessKeyId'])
-    conf_set("aws_secret_access_key", access_key['SecretAccessKey'])
-    conf_set("region", REGION)
-
-    print(f"Access key for profile {PROJECTNAME} has been created")
 
 
 def create_https_git_credentials() -> None:
@@ -219,7 +173,8 @@ def copy_website_content() -> None:
 def _get_ampify_app_id() -> str:
     """Get the Ampify app ID."""
     result = run(["aws", "amplify", "list-apps",
-                  "--query", "apps[?name=='wildrydes-site'].appId"])
+                  "--query", "apps[?name=='wildrydes-site'].appId",
+                  "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error getting the list of amplify apps: {result}")
     values = json.loads(result.stdout.decode())
@@ -230,13 +185,13 @@ def _get_ampify_app_id() -> str:
 
 def create_amplify(repo_url: str) -> str:
     """Create amplify app with data from repo."""
-    appId = _get_ampify_app_id()
-    if appId:
+    app_id = _get_ampify_app_id()
+    if app_id:
         print(f"Amplify app {REPO_NAME} was created earlier")
-        return f"https://master.{appId}.amplifyapp.com/"
+        return f"https://master.{app_id}.amplifyapp.com/"
 
     iam_service_role_arn = create_role(
-        "amplifyconsole-backend-role",
+        AMPLIFY_ROLE,
         '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
         '"Principal":{"Service":"amplify.amazonaws.com"},'
         '"Action":"sts:AssumeRole"}]}',
@@ -287,29 +242,29 @@ def modify_file() -> None:
     print("Title of the index.html file has been modified")
 
 
-def clean() -> None:
+def clean(state: State) -> None:  # pylint: disable=unused-argument
     """Clean up in aws cloud what we have created in this module"""
-    # TODO: clean module 1
-    # delete repo "wildrydes-site"
-    # delete policies from user <IAM_USER>
-    # delete access key from user <IAM_USER>
-    # delete HTTPS git credentials from user <IAM_USER>
-    # delete amplify_role_name = "amplifyconsole-backend-role"
-
     app_id = _get_ampify_app_id()
     if app_id:
-        result = run(["aws", "amplify", "delete-app", "--app-id", app_id])
+        result = run(["aws", "amplify", "delete-app", "--app-id", app_id,
+                      "--profile", PROJECTNAME])
         if result.returncode != 0:
             raise ValueError(f"Error deleting the amplify app: {result}")
         print(f"Amplify app {REPO_NAME} has been deleted")
+
+    delete_role(AMPLIFY_ROLE)
+
+    # rights fo IAM_USER not settet, so call from administrator
+    result = run(["aws", "codecommit", "delete-repository",
+                  "--repository-name", REPO_NAME])
+    if result.returncode != 0:
+        raise ValueError(f"Error deleting the repository: {result}")
+    print(f"Repository {REPO_NAME} has been deleted")
 
 
 def main(state: State) -> None:
     """Main function."""
     url = create_repo()
-    create_iam_user()
-    add_policies()
-    create_access_key()
     create_https_git_credentials()
     configure_git()
     clone_git(url)

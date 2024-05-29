@@ -140,7 +140,8 @@ def create_user_pool_client(user_pool_id: str) -> str:
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating user pool client: {result}")
-    client_id = json.loads(result.stdout.decode())["UserPoolClient"]["ClientId"]
+    client_id = json.loads(result.stdout.decode()
+                           )["UserPoolClient"]["ClientId"]
     print(f"User pool client {client_id} has been created")
     return client_id
 
@@ -464,17 +465,25 @@ def authenticate_user(user_pool_id: str, client_id: str,
     return authentication["IdToken"]
 
 
-def clean() -> None:
+def clean(state: State) -> None:
     """Clean up in aws cloud what we have created in this module"""
-    # TODO: clean module 2
-    # delete policies from user <IAM_USER> and confirmed email?
-    # Delete identities
-    # Delete user pool (with user pool clients)
+    result = run(["aws", "cognito-idp", "delete-user-pool",
+                  "--user-pool-id", state.user_pool_id,
+                  "--profile", PROJECTNAME])
+    if result.returncode != 0:
+        raise ValueError(f"Error deleting user pool: {result}")
+    print(f"User pool {state.user_pool_id} has been deleted")
+
+    result = run(["aws", "sesv2", "delete-email-identity",
+                  "--email-identity", IAM_USER_MAIL,
+                  "--profile", PROJECTNAME])
+    if result.returncode != 0:
+        raise ValueError(f"Error deleting email identity: {result}")
+    print(f"Email identity {IAM_USER_MAIL} has been deleted")
 
 
 def main(state: State) -> None:
     """Main function."""
-    add_policies()
     create_email_identity()
     state.user_pool_id = create_user_pool()
     client_id = create_user_pool_client(state.user_pool_id)
@@ -483,7 +492,3 @@ def main(state: State) -> None:
     login, password = register_new_user(state.user_pool_id)
     state.auth_token = authenticate_user(
         state.user_pool_id, client_id, login, password)
-
-
-if __name__ == "__main__":
-    main(State())

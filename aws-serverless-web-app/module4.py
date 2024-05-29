@@ -11,10 +11,8 @@ import json
 import re
 
 from helpers import BASE_DIR, PROJECTNAME, REPO_NAME, REGION,  ACCOUNT_ID, \
-    run, arns_user_policies, attach_policy, push_to_git, State
-import module1
-import module2
-import module3
+    LAMBDA_NAME, GATEWAY_API_NAME, run, arns_user_policies, attach_policy, \
+    push_to_git, State
 
 
 def add_policies() -> None:
@@ -26,26 +24,26 @@ def add_policies() -> None:
             attach_policy(arn)
 
 
-def create_gateway_api(api_name: str) -> str:
+def create_gateway_api() -> str:
     """Create REST API in Amazon API Gateway."""
     result = run(["aws", "apigateway", "get-rest-apis",
-                  "--query", f"items[?name=='{api_name}'].id",
+                  "--query", f"items[?name=='{GATEWAY_API_NAME}'].id",
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error getting API: {result}")
     result_json = json.loads(result.stdout.decode())
     if result_json != []:
-        print(f"API '{api_name}' already exists")
+        print(f"API '{GATEWAY_API_NAME}' already exists")
         return result_json[0]
 
     result = run(["aws", "apigateway", "create-rest-api",
-                  "--name", api_name,
+                  "--name", GATEWAY_API_NAME,
                   "--endpoint-configuration", "types=EDGE",
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error creating API: {result}")
     api_id = json.loads(result.stdout.decode())["id"]
-    print(f"API '{api_name}' has been created with id {api_id}")
+    print(f"API '{GATEWAY_API_NAME}' has been created with id {api_id}")
     return api_id
 
 
@@ -154,7 +152,7 @@ def create_method(api_id: str, resource_id: str, authorizer_id: str,
 
     uri = f"arn:aws:apigateway:{REGION}:lambda:path/2015-03-31/functions/" \
           f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:{lambda_name}" \
-           "/invocations"
+          "/invocations"
     result = run(["aws", "apigateway", "put-integration",
                   "--rest-api-id", api_id,
                   "--resource-id", resource_id,
@@ -169,10 +167,10 @@ def create_method(api_id: str, resource_id: str, authorizer_id: str,
 
 
 def add_permission_to_lambda_for_gateway(lambda_name: str, api_id: str,
-                                      resource_ride_id: str) -> None:
+                                         resource_ride_id: str) -> None:
     """Add permission for lambda function to invoke gateway."""
-    source_arn = f"arn:aws:execute-api:{REGION}:{ACCOUNT_ID}:{api_id}/POST/" \
-               + resource_ride_id
+    source_arn = f"arn:aws:execute-api:{REGION}:{ACCOUNT_ID}:{api_id}/POST/" +\
+                 resource_ride_id
     result = run
     result = run(["aws", "lambda", "add-permission",
                   "--function-name", lambda_name,
@@ -182,25 +180,25 @@ def add_permission_to_lambda_for_gateway(lambda_name: str, api_id: str,
                   "--source-arn", source_arn, "--profile", PROJECTNAME])
     if "The statement id (AllowAPIGatewayInvoke) provided already exists." \
             in result.stderr.decode():
-        print(f"Permission for gateway has already been added")
+        print("Permission for gateway has already been added")
         return
     if result.returncode != 0:
         raise ValueError(f"Error adding permission for gateway: {result}")
-    print(f"Permission for gateway has been added", result)
+    print("Permission for gateway has been added")
 
 
 def deploy_api(api_id: str) -> str:
     """Deploy api."""
     stage_name = "prod"
-    invoke_url = f"https://{api_id}.execute-api.{REGION}.amazonaws.com/" \
-               + stage_name
+    invoke_url = f"https://{api_id}.execute-api.{REGION}.amazonaws.com/" + \
+                 stage_name
     result = run(["aws", "apigateway", "get-deployments",
                   "--rest-api-id", api_id,
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error getting deployments: {result}")
     if json.loads(result.stdout.decode())["items"]:
-        print(f"Api has already been deployed")
+        print(f"Api {invoke_url} has already been deployed")
         return invoke_url
     result = run(["aws", "apigateway", "create-deployment",
                   "--rest-api-id", api_id,
@@ -208,7 +206,7 @@ def deploy_api(api_id: str) -> str:
                   "--profile", PROJECTNAME])
     if result.returncode != 0:
         raise ValueError(f"Error deploying api: {result}")
-    print(f"Api has been deployed")
+    print(f"Api {invoke_url} has been deployed")
     return invoke_url
 
 
@@ -253,57 +251,35 @@ def change_arcgis_version() -> None:
     print("Arcgis version has been changed")
 
 
-def clean(table_name: str, lambda_name: str) -> None:
+def clean(state: State) -> None:
     """Clean up in aws cloud what we have created in this module"""
-    # TODO: clean module 4
-    # Delete gateway API
-    pass
+    result = run(["aws", "apigateway", "delete-rest-api",
+                  "--rest-api-id", state.api_id, "--profile", PROJECTNAME])
+    if result.returncode != 0:
+        raise ValueError(f"Error deleting api: {result}")
+    print(f"Api {state.api_id} has been deleted")
 
 
 def main(state: State) -> None:
     """Main function."""
-    #state.site_url = "https://master.dpy0y1ysrd0mc.amplifyapp.com/"
-    module1.main(state)
-    #state.user_pool_id = "eu-central-1_KGobcpvgo"
-    #state.auth_token = "eyJraWQiOiJNTjRCdDlqUFFpWFpodHdXV3ozenJRMUhtMWJZNlIyaWE5XC9VTHkrcXA4OD0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJjMzI0ZDgxMi0wMGQxLTcwNWYtYTBmYS05MjA1YjU1YTJlODYiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAuZXUtY2VudHJhbC0xLmFtYXpvbmF3cy5jb21cL2V1LWNlbnRyYWwtMV9LR29iY3B2Z28iLCJjb2duaXRvOnVzZXJuYW1lIjoidXNlciIsIm9yaWdpbl9qdGkiOiI3M2U1Yjg3NC04Mjg2LTQ3ZjctYWYxMy1kYTM2Mjg1YWIzZjQiLCJhdWQiOiIxbDcxZ3EyN285cDVqazN1a2djcmNuYWI3MCIsImV2ZW50X2lkIjoiMTU0YWMwYmQtODFiNi00NTk4LWJmMWMtNTZhYWVmOWY0Mzc1IiwidG9rZW5fdXNlIjoiaWQiLCJhdXRoX3RpbWUiOjE3MTY4MTc1MTEsImV4cCI6MTcxNjgyMTExMSwiaWF0IjoxNzE2ODE3NTExLCJqdGkiOiIyNTUyY2U5OC1mNTM3LTRiNWItYTQ5NC1jODdlYTJkYWM2ZTYiLCJlbWFpbCI6InVzZXJAZG9tYWluIn0.oBskzhAytd5UiYX61rn1XFU0lM4b3GTkOKS3npQf6k4aQSUepnmiQ9CAVNPmkl2sT7bRSYCZHwWd-78o700dPG9btvqTwTLQvXtNP42ktv7XbKm2-FQhcvfkUQLK04xRiuMu2HcNfWBdiwcUMePT5kI4uOQJmSRk0Dp5T-vD5Uro9GUhmOglxsYGV1bjGMrWkQxLXr0QqlWmb2yymB1UCYLx20E9udAxFlDxN4QaWPZP6l_FGYiGxQfEWu5xCIGKWFDnZbIiI6GluTlKd1DSJQVrNQmQ2llYSjp3c6tqULT9IIxV6Z5SGYHR8T_cTbglZYwdUNqdQ0LXgxID7e1fkQ"
-    module2.main(state)
-    #state.lambda_name = "RequestUnicorn"
-    module3.main(state)
-
-    add_policies()
-
-    api_name = "WildRydes"
-    api_id = create_gateway_api(api_name)
+    state.api_id = create_gateway_api()
 
     authorizer_name = "WildRydes"
-    authorizer_id = create_uthorizer(api_id, authorizer_name,
+    authorizer_id = create_uthorizer(state.api_id, authorizer_name,
                                      state.user_pool_id)
-    test_authorizer(api_id, authorizer_id, state.auth_token)
+    test_authorizer(state.api_id, authorizer_id, state.auth_token)
 
-    resource_ride_id = create_resource(api_id, "ride")
-    create_method(api_id, resource_ride_id, authorizer_id, state.lambda_name)
+    resource_ride_id = create_resource(state.api_id, "ride")
+    create_method(state.api_id, resource_ride_id, authorizer_id, LAMBDA_NAME)
     add_permission_to_lambda_for_gateway(
-        state.lambda_name, api_id, resource_ride_id)
-    invoke_url = deploy_api(api_id)
+        LAMBDA_NAME, state.api_id, resource_ride_id)
+    invoke_url = deploy_api(state.api_id)
     update_website(invoke_url)
     push_to_git("new_configuration")
 
-    input(f"Check site {state.site_url}/signin.html before change version"
-          " (wait during deployment) and press Enter to continue")
+    input(f"Check site {state.site_url}signin.html before change version"
+          " (wait during deployment). There is problem with login - register"
+          " a new user better. Press Enter to continue")
 
     change_arcgis_version()
     push_to_git("change arcgis version")
-
-    # I don't want to register in arcgis - for 21-day trial it asks
-    # buisness data (type, company, job title, country, phone number etc)
-
-    # input("press Enter to delete apps (Ampify, lambda, dynamoDB)"
-    #       " or Ctrl+C to leave them running...")
-    # clean(dynamodb_table_name, lambda_name)
-    #module3.clean()
-    #module2.clean()
-    #module1.clean()
-
-
-if __name__ == "__main__":
-    main(State())

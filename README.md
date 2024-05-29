@@ -29,7 +29,7 @@ To start container: `bash install.sh $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY` 
 I know about [boto3 module](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) for python,
 but I don't want to install python3-pip for it, so I will use aws-cli and some code from pycognito for this module.
 
-The automated module instructions are in the files *moduleX.py*.
+The automated module instructions are in the files *moduleX.py* and the common scenarion in the *start.py*. You can re-run script as many times as you want - this may be necessary when parsing errors.
 
 ### Additional sources copied to this repository
 
